@@ -141,7 +141,7 @@ export default {
         // For safety: only allow if callback_query.message.chat.id == adminChat
         const callbackChatId = body.callback_query.message?.chat?.id;
         if (String(callbackChatId) !== String(adminChat)) {
-          if (token) await telegramRequest(token, 'answerCallbackQuery', { callback_query_id: body.callback_query.id, text: 'دسترسی ندارید.' });
+          if (token) await telegramRequest(token, 'answerCallbackQuery', { callback_query_id: body.callback_query.id, text: 'دست��سی ندارید.' });
           return new Response('ok');
         }
         if (action === 'approve') {
@@ -188,6 +188,31 @@ export default {
         product_name: payload.product_name || '',
         status: 'pending',
         created_at: Date.now()
+      };
+      await saveOrder(env, orderId, order);
+      await notifyAdmin(env, order);
+      return new Response(JSON.stringify({ ok: true, orderId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
+    // Admin API: create order (manual)
+    if (path === '/api/create' && request.method === 'POST') {
+      const body = await request.json().catch(()=>null);
+      const pass = request.headers.get('x-admin-pass') || (body && body.admin_pass);
+      const adminPass = await env.ORDERS.get(ADMIN_PASS_KEY);
+      if (!adminPass || pass !== adminPass) return new Response('forbidden', { status: 403 });
+      if (!body) return new Response('bad request', { status: 400 });
+      const orderId = genId();
+      const order = {
+        id: orderId,
+        user_id: body.user_id,
+        username: body.username || null,
+        amount: body.amount || 0,
+        product_type: body.product_type || 'cred',
+        product_value: body.product_value || '',
+        product_name: body.product_name || '',
+        status: 'pending',
+        created_at: Date.now(),
+        created_by: 'admin-web'
       };
       await saveOrder(env, orderId, order);
       await notifyAdmin(env, order);
