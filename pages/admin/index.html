@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fa">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mirzabot Admin</title>
+  <style>
+    body{font-family:Tahoma,Arial;background:#f7f7f7;padding:20px;color:#222}
+    .box{background:#fff;padding:16px;border-radius:8px;max-width:900px;margin:12px auto}
+    input,button,textarea{padding:8px;margin:6px 0;width:100%}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+    .row{display:flex;gap:8px}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h2>Mirzabot - پنل مدیریت (نسخهٔ ساده)</h2>
+    <div id="setup" style="display:block">
+      <h3>مرحلهٔ راه‌اندازی اولیه</h3>
+      <p>قبل از استفاده، در داشبورد Cloudflare Worker یک secret بنام <code>SETUP_SECRET</code> اضافه کن (مقداری که اینجا وارد می‌کنی). سپس این فرم را با همان مقدار و توکن‌ها پر کن تا در KV ذخیره شوند.</p>
+      <label>Setup Secret (از Cloudflare تنظیم کن)</label>
+      <input id="setup_secret" placeholder="مقدار SETUP_SECRET" />
+      <label>توکن ربات تلگرام (TELEGRAM_TOKEN)</label>
+      <input id="telegram_token" placeholder="123:ABC..." />
+      <label>ADMIN_CHAT_ID (گروه ادمین، مثال: -1001234567890)</label>
+      <input id="admin_chat_id" placeholder="-100..." />
+      <label>PAYMENT_SECRET (مقداری که PHP از آن برای POST استفاده می‌کند)</label>
+      <input id="payment_secret" />
+      <label>ADMIN_PASS (رمز ورود ساده برای پنل)</label>
+      <input id="admin_pass" />
+      <button id="do_setup">ذخیره و راه‌اندازی</button>
+      <p id="setup_msg"></p>
+    </div>
+
+    <div id="admin_area" style="display:none">
+      <h3>ورود به پنل</h3>
+      <input id="login_pass" placeholder="رمز عبور ادمین" />
+      <button id="do_login">ورود</button>
+      <div id="orders_section" style="display:none">
+        <h3>سفارش‌ها</h3>
+        <table id="orders_table">
+          <thead><tr><th>id</th><th>user</th><th>product</th><th>amount</th><th>status</th><th>عملیات</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+<script>
+const base = '';
+async function doSetup(){
+  const data = {
+    telegram_token: document.getElementById('telegram_token').value,
+    payment_secret: document.getElementById('payment_secret').value,
+    admin_chat_id: document.getElementById('admin_chat_id').value,
+    admin_pass: document.getElementById('admin_pass').value
+  };
+  const setupSecret = document.getElementById('setup_secret').value;
+  const res = await fetch(base + '/setup', {method:'POST',headers:{'Content-Type':'application/json','x-setup-secret':setupSecret},body:JSON.stringify(data)});
+  const j = await res.json();
+  document.getElementById('setup_msg').innerText = JSON.stringify(j);
+  if(j.ok){ document.getElementById('setup').style.display='none'; document.getElementById('admin_area').style.display='block'; }
+}
+async function doLogin(){
+  const pass = document.getElementById('login_pass').value;
+  // simple check by calling orders endpoint
+  const res = await fetch(base + '/api/orders?admin_pass=' + encodeURIComponent(pass));
+  if(res.status === 200){
+    const j = await res.json();
+    window.ADMIN_PASS = pass;
+    document.getElementById('orders_section').style.display='block';
+    renderOrders(j.orders || []);
+  } else {
+    alert('خطا در ورود');
+  }
+}
+function renderOrders(list){
+  const tbody = document.querySelector('#orders_table tbody'); tbody.innerHTML='';
+  list.forEach(o=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${o.id}</td><td>${o.username||o.user_id}</td><td>${o.product_name||''}</td><td>${o.amount||''}</td><td>${o.status||''}</td><td></td>`;
+    const td = tr.querySelector('td:last-child');
+    const approve = document.createElement('button'); approve.textContent='تایید'; approve.onclick=()=>approveOrder(o.id);
+    const reject = document.createElement('button'); reject.textContent='رد'; reject.onclick=()=>rejectOrder(o.id);
+    td.appendChild(approve); td.appendChild(reject);
+    tbody.appendChild(tr);
+  });
+}
+async function approveOrder(id){
+  const res = await fetch('/api/approve', {method:'POST',headers:{'Content-Type':'application/json','x-admin-pass':window.ADMIN_PASS},body:JSON.stringify({orderId:id})});
+  if(res.ok) alert('تایید و ارسال انجام شد'); else alert('خطا');
+  loadOrders();
+}
+async function rejectOrder(id){
+  const res = await fetch('/api/reject', {method:'POST',headers:{'Content-Type':'application/json','x-admin-pass':window.ADMIN_PASS},body:JSON.stringify({orderId:id})});
+  if(res.ok) alert('رد شد'); else alert('خطا');
+  loadOrders();
+}
+async function loadOrders(){
+  const res = await fetch('/api/orders?admin_pass=' + encodeURIComponent(window.ADMIN_PASS));
+  const j = await res.json(); renderOrders(j.orders||[]);
+}
+
+document.getElementById('do_setup').addEventListener('click', doSetup);
+document.getElementById('do_login').addEventListener('click', doLogin);
+</script>
+</body>
+</html>
